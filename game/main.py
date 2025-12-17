@@ -11,6 +11,7 @@ class Core:
         else:
             self.board = chess.Board()
         self.game = pgn.Game.from_board(self.board)
+        self.game_node = self.game
 
     def export_fen(self):
         return self.board.fen()
@@ -21,10 +22,45 @@ class Core:
     def check_legal(self, move):
         return self.board.is_legal(chess.Move.from_uci(move))
     
+    def make_move(self, move_uci):
+        if self.check_legal(move_uci):
+            move = chess.Move.from_uci(move_uci)
+            self.game_node = self.game_node.add_main_variation(move)
+            self.board.push(move)
+            status = self.check_status()
+            if status:
+                print(f"Game Over: {status}")
+                self.game.headers["Result"] = self.board.result()
+        else:
+            raise ValueError(f"Illegal move: {move_uci}")
+
+    def get_turn(self):
+        if self.board.turn == chess.WHITE:
+            return "White" 
+        else:
+            return "Black"
+
+    def is_in_check(self):
+        return self.board.is_check()
+
+    def check_status(self):
+        if self.board.is_checkmate():
+            return "Checkmate"
+        if self.board.is_stalemate():
+            return "Stalemate"
+        if self.board.is_insufficient_material():
+            return "Insufficient Material"
+        if self.board.is_fifty_moves():
+            return "50-move Rule"
+        if self.board.is_fivefold_repetition():
+            return "Fivefold Repetition"
+        return None
+
     def save_pgn(self):
         white = self.game.headers.get("White")
         black = self.game.headers.get("Black")
         today = date.today().strftime("%Y.%m.%d")
+        self.game.headers["Date"] = today
 
         if white == "?":
             sanitized_white = "White"
