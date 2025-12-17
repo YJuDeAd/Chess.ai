@@ -10,8 +10,6 @@ class Core:
             self.board = chess.Board(FEN)
         else:
             self.board = chess.Board()
-        self.game = pgn.Game.from_board(self.board)
-        self.game_node = self.game
 
     def export_fen(self):
         return self.board.fen()
@@ -25,12 +23,10 @@ class Core:
     def make_move(self, move_uci):
         if self.check_legal(move_uci):
             move = chess.Move.from_uci(move_uci)
-            self.game_node = self.game_node.add_main_variation(move)
             self.board.push(move)
             status = self.check_status()
             if status:
                 print(f"Game Over: {status}")
-                self.game.headers["Result"] = self.board.result()
         else:
             raise ValueError(f"Illegal move: {move_uci}")
 
@@ -57,6 +53,7 @@ class Core:
         return None
 
     def save_pgn(self):
+        self.game = pgn.Game.from_board(self.board)
         white = self.game.headers.get("White")
         black = self.game.headers.get("Black")
         today = date.today().strftime("%Y.%m.%d")
