@@ -6,13 +6,27 @@ import os
 
 class Core:
     def __init__(self, FEN=None):
+        self.game_over = False
+        self.draw_reason = None
+        
         if FEN:
             self.board = chess.Board(FEN)
+            self.fen_check()
         else:
             self.board = chess.Board()
+        
+        self.game = pgn.Game.from_board(self.board)
+        self.game_node = self.game
 
     def export_fen(self):
         return self.board.fen()
+
+    def fen_check(self):
+        status = self.check_status()
+        if status:
+            print(f"Game Over: {status}")
+            self.game_over = True
+        return
 
     def get_legal(self):
         return [move.uci() for move in self.board.legal_moves]
@@ -21,14 +35,19 @@ class Core:
         return self.board.is_legal(chess.Move.from_uci(move))
     
     def make_move(self, move_uci):
-        if self.check_legal(move_uci):
-            move = chess.Move.from_uci(move_uci)
-            self.board.push(move)
-            status = self.check_status()
-            if status:
-                print(f"Game Over: {status}")
+        if self.game_over:
+            raise ValueError("Game is already over.")
         else:
-            raise ValueError(f"Illegal move: {move_uci}")
+            if self.check_legal(move_uci):
+                move = chess.Move.from_uci(move_uci)
+                self.game_node = self.game_node.add_main_variation(move)
+                self.board.push(move)
+                status = self.check_status()
+                if status:
+                    print(f"Game Over: {status}")
+                    self.game_over = True
+            else:
+                raise ValueError(f"Illegal move: {move_uci}")
 
     def get_turn(self):
         if self.board.turn == chess.WHITE:
@@ -43,21 +62,36 @@ class Core:
         if self.board.is_checkmate():
             return "Checkmate"
         if self.board.is_stalemate():
-            return "Stalemate"
+            self.draw_reason = "Stalemate"
+            return self.draw_reason
         if self.board.is_insufficient_material():
-            return "Insufficient Material"
+            self.draw_reason = "Insufficient Material"
+            return self.draw_reason
         if self.board.is_fifty_moves():
-            return "50-move Rule"
+            self.draw_reason = "50-move Rule"
+            return self.draw_reason
         if self.board.is_fivefold_repetition():
-            return "Fivefold Repetition"
+            self.draw_reason = "Fivefold Repetition"
+            return self.draw_reason
         return None
 
+    def game_result(self):
+        result = self.board.result()
+        if result == "1-0":
+            return "White wins"
+        elif result == "0-1":
+            return "Black wins"
+        elif result == "*":
+            return "Game is still in progress"
+        else:
+            return f"Draw: {self.draw_reason}"
+
     def save_pgn(self):
-        self.game = pgn.Game.from_board(self.board)
         white = self.game.headers.get("White")
         black = self.game.headers.get("Black")
         today = date.today().strftime("%Y.%m.%d")
         self.game.headers["Date"] = today
+        self.game.headers["Result"] = self.board.result()
 
         if white == "?":
             sanitized_white = "White"
