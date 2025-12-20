@@ -1,4 +1,4 @@
-from main import Core
+from core import Core
 
 game = Core()
 
