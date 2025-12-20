@@ -70,8 +70,8 @@ class Core:
         if self.board.is_fifty_moves():
             self.draw_reason = "50-move Rule"
             return self.draw_reason
-        if self.board.is_fivefold_repetition():
-            self.draw_reason = "Fivefold Repetition"
+        if self.board.is_repetition():
+            self.draw_reason = "Threefold Repetition"
             return self.draw_reason
         return None
 
