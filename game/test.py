@@ -1,20 +1,27 @@
-from core import Core
+from orchestrator import Orchestrator, HumanPlayer
 
-game = Core()
+game = Orchestrator()
 
-while not game.check_status():
-    print(f"{game.get_turn()}'s Turn")
+p1 = HumanPlayer("May")
+p2 = HumanPlayer("Cody")
+
+game.assign_players(p1, p2)
+
+while not game.game.game_over:
+    status = game.get_status()
     
-    if game.is_in_check():
-        print("YOUR KING IS IN CHECK!")
-
-    print(game.board)
-
-    user_move = input("Enter move (e.g., a2a4): ")
+    print("\n" + "="*20)
+    print(f"TURN: {status['Turn']}")
+    print(game.game.board)
     
-    try:
-        game.make_move(user_move)
-    except ValueError as e:
-        print(e)
+    if status['Check']:
+        print("!!! YOUR KING IS IN CHECK !!!")
 
-game.save_pgn()
+    success = game.run_tick()
+    
+    if not success:
+        print("Try again.")
+
+print("\nGAME OVER")
+print(f"Result: {game.game.game_result()}")
+game.game.save_pgn()
