@@ -34,6 +34,17 @@ class Orchestrator:
             "Black": self.black
         }
 
+    def start_match(self):
+        print(f"Match Started: {self.white} (White) vs {self.black} (Black)")
+
+        while not self.game.game_over:
+            self.display_board()
+            success = self.run_tick()
+            if not success:
+                print("Invalid Move, Try again.")
+
+        self.game_end()
+
     def run_tick(self):
         if self.game.game_over:
             return "Game Over"
@@ -52,6 +63,21 @@ class Orchestrator:
         except ValueError as e:
             print(e)
             return False
+        
+    def display_board(self):
+        status = self.get_status()
+    
+        print("\n" + "="*20)
+        print(f"TURN: {status['Turn']}")
+        print(self.game.board)
+        
+        if status['Check']:
+            print("!!! YOUR KING IS IN CHECK !!!")
+
+    def game_end(self):
+        print("\nGAME OVER")
+        print(f"Result: {self.game.game_result()}")
+        self.game.save_pgn()
         
     def get_status(self):
         return {
