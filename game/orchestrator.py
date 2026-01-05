@@ -15,15 +15,30 @@ class HumanPlayer:
 
 
 class Orchestrator:
-    def __init__(self, max_retries=3, time_per_player=600):
+    def __init__(self, config=None):
         self.game = Core()
+        
+        self.config = {
+            "max_retries": 3,
+            "time_per_player": 600,
+            "verbosity": True,
+            "auto_save": True
+        }
+
+        if config:
+            self.config.update(config)
+        
         self.white = None
         self.black = None
         self.player_map = {}
-        self.max_retries = max_retries
+        
         self.strikes = {"White": 0, "Black": 0}
-        self.time_limit = time_per_player
-        self.clock = {"White": float(time_per_player), "Black": float(time_per_player)}
+        self.clock = {
+            "White": float(self.config["time_per_player"]), 
+            "Black": float(self.config["time_per_player"])
+        }
+        
+        self.move_history = []
 
     def assign_players(self, p1, p2):
         players = [p1, p2]
@@ -31,37 +46,50 @@ class Orchestrator:
 
         self.white, self.black = players
 
-        self.game.game.headers["White"] = self.white
-        self.game.game.headers["Black"] = self.black
+        self.game.game.headers["White"] = str(self.white)
+        self.game.game.headers["Black"] = str(self.black)
 
         self.player_map = {
             "White": self.white,
             "Black": self.black
         }
 
+    def log(self, message):
+        if self.config["verbosity"]:
+            print(message)
+
     def start_match(self):
-        print(f"Match Started: {self.white} (White) vs {self.black} (Black)")
-        print(f"Time: {self.time_limit}s per player")
+        self.log(f"Match Started: {self.white} (White) vs {self.black} (Black)")
+        self.log(f"Time Control: {self.config['time_per_player']}s | Retries: {self.config['max_retries']}")
+
+        forced_winner = None
 
         while not self.game.game_over:
             self.display_board()
             result = self.run_tick()
             
             if result["status"] == "timeout":
-                print(f"TIMEOUT {result["player"]} ran out of time")
+                self.log(f"TIMEOUT {result['player']} ran out of time")
+                forced_winner = "Black" if result['player'] == "White" else "White"
+                break
+            
+            if result["status"] == "player_error":
+                current_turn = self.game.get_turn()
+                forced_winner = "Black" if result['player'] == "White" else "White"
+                self.log(f"PLAYER CRASH: {result['message']}")
+                self.log(f"CRITICAL PLAYER ERROR: {result['message']}")
+                self.log(f"RESULT: {current_turn} forfeits due to code crash.")
                 break
             
             if result["status"] == "invalid_move":
-                print(f"{result['reason']} (Strike {result['strikes']}/{self.max_retries})")
+                self.log(f"{result['reason']} (Strike {result['strikes']}/{self.config['max_retries']})")
                 if result["forfeit"]:
-                    print("MAX RETRIES EXCEEDED. Game Over.")
+                    current_turn = self.game.get_turn()
+                    forced_winner = "Black" if current_turn == "White" else "White"
+                    self.log(f"MAX RETRIES EXCEEDED: {current_turn} forfeits.")
                     break
 
-            elif result["status"] == "failed":
-                print(f"CRITICAL FAILURE: {result['reason']}")
-                break
-
-        self.game_end()
+        self.game_end(winner_override=forced_winner)
 
     def run_tick(self):
         if self.game.game_over:
@@ -69,6 +97,7 @@ class Orchestrator:
 
         current_turn = self.game.get_turn()
         current_player = self.player_map[current_turn]
+        fen_before = self.game.export_fen()
 
         start_time = time.time()
 
@@ -86,6 +115,17 @@ class Orchestrator:
 
         move_result = self.play_move(move)
 
+        log_entry = {
+            "turn": current_turn,
+            "player": str(current_player),
+            "move": move,
+            "elapsed": round(elapsed, 3),
+            "remaining": round(self.clock[current_turn], 3),
+            "success": move_result["success"],
+            "fen": fen_before
+        }
+        self.move_history.append(log_entry)
+
         if move_result["success"]:
             self.strikes[current_turn] = 0
             if self.game.game_over:
@@ -93,7 +133,7 @@ class Orchestrator:
             return {"status": "success"}
         else:
             self.strikes[current_turn] += 1
-            is_forfeit = self.strikes[current_turn] >= self.max_retries
+            is_forfeit = self.strikes[current_turn] >= self.config["max_retries"]
             return {
                 "status": "invalid_move", 
                 "reason": move_result["reason"],
@@ -112,31 +152,26 @@ class Orchestrator:
         status = self.get_status()
     
         print("\n" + "="*20)
-        print(f"TURN: {status['Turn']} | WHITE: {self.clocks['White']:.1f}s | BLACK: {self.clocks['Black']:.1f}s")
+        print(f"TURN: {status['Turn']} | WHITE: {self.clock['White']:.1f}s | BLACK: {self.clock['Black']:.1f}s")
         print(self.game.board)
         
         if status['Check']:
             print("!!! YOUR KING IS IN CHECK !!!")
 
-    def game_end(self):
-        print("\n" + "═"*20)
-        print("GAME OVER")
+    def game_end(self, winner_override=None):
+        self.log("\n" + "═"*20)
+        self.log("GAME OVER")
 
-        if self.clocks["White"] <= 0:
-            print(f"Result: Black wins on time.")
-            return
-        if self.clocks["Black"] <= 0:
-            print(f"Result: White wins on time.")
-            return
+        if winner_override:
+            self.log(f"Final Result: {winner_override} wins by technicality/forfeit.")
+            self.game.game.headers["Result"] = "1-0" if winner_override == "White" else "0-1"
+        else:
+            res = self.game.game_result()
+            self.log(f"Final Result: {res}")
         
-        for side, count in self.strikes.items():
-            if count >= self.max_retries:
-                winner = "Black" if side == "White" else "White"
-                print(f"Result: {winner} wins by forfeit ({side} exceeded max retries)")
-                return
-
-        print(f"Result: {self.game.game_result()}")
-        self.game.save_pgn()
+        if self.config["auto_save"]:
+            self.game.save_pgn()
+            self.log("PGN Saved.")
         
     def get_status(self):
         return {
